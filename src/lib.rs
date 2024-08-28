@@ -161,8 +161,8 @@ impl<'a> Emitter<'a> {
     ) -> Result<(), ToMinimadError> {
         let compound = Compound {
             src: &value,
-            bold: false,
-            italic: false,
+            bold: self.bold,
+            italic: self.italic,
             code: true,
             strikeout: self.strikeout,
         };
