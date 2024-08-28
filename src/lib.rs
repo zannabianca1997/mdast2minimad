@@ -2,6 +2,7 @@
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
+use minimad::{Composite, CompositeStyle, Line};
 
 #[derive(Clone, Debug, Display, Error)]
 pub enum ToMinimadError {
@@ -41,6 +42,7 @@ impl<'a> Emitter<'a> {
         // emit the node
         match node {
             mdast::Node::Root(root) => self.root(root),
+            mdast::Node::Heading(heading) => self.heading(heading),
             // -- Unsupported node types --
             mdast::Node::BlockQuote(_) => Err(ToMinimadError::UnsupportedNode("BlockQuote")),
             mdast::Node::FootnoteDefinition(_) => {
@@ -81,7 +83,6 @@ impl<'a> Emitter<'a> {
             mdast::Node::MdxFlowExpression(_) => {
                 Err(ToMinimadError::UnsupportedNode("MdxFlowExpression"))
             }
-            mdast::Node::Heading(_) => Err(ToMinimadError::UnsupportedNode("Heading")),
             mdast::Node::Table(_) => Err(ToMinimadError::UnsupportedNode("Table")),
             mdast::Node::ThematicBreak(_) => Err(ToMinimadError::UnsupportedNode("ThematicBreak")),
             mdast::Node::TableRow(_) => Err(ToMinimadError::UnsupportedNode("TableRow")),
@@ -100,6 +101,25 @@ impl<'a> Emitter<'a> {
             position: _,
         }: &'a mdast::Root,
     ) -> Result<(), ToMinimadError> {
+        for child in children {
+            self.node(child)?;
+        }
+        Ok(())
+    }
+
+    /// Emit an heading node
+    fn heading(
+        &mut self,
+        mdast::Heading {
+            position: _,
+            children,
+            depth,
+        }: &'a mdast::Heading,
+    ) -> Result<(), ToMinimadError> {
+        self.lines.push(Line::Normal(Composite {
+            style: CompositeStyle::Header(*depth),
+            compounds: vec![],
+        }));
         for child in children {
             self.node(child)?;
         }
