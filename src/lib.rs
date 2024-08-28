@@ -2,7 +2,6 @@
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use markdown::unist::Position;
 
 #[derive(Clone, Debug, Display, Error)]
 pub enum ToMinimadError {
