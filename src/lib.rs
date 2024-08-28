@@ -330,9 +330,26 @@ impl<'a> Emitter<'a> {
     /// Emit a `Code` node
     fn code(
         &mut self,
-        mdast::Code { position: _, .. }: &'a mdast::Code,
+        mdast::Code {
+            position: _,
+            value,
+            lang: _,
+            meta: _,
+        }: &'a mdast::Code,
     ) -> Result<(), ToMinimadError> {
-        Err(ToMinimadError::UnsupportedNode("Code"))
+        for line in value.lines() {
+            self.lines.push(Line::Normal(Composite {
+                style: CompositeStyle::Code,
+                compounds: vec![Compound {
+                    src: line,
+                    bold: false,
+                    italic: false,
+                    code: false,
+                    strikeout: false,
+                }],
+            }))
+        }
+        Ok(())
     }
 
     /// Emit a `Math` node
