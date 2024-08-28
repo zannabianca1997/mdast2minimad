@@ -402,9 +402,20 @@ impl<'a> Emitter<'a> {
     /// Emit a `Paragraph` node
     fn paragraph(
         &mut self,
-        mdast::Paragraph { position: _, .. }: &'a mdast::Paragraph,
+        mdast::Paragraph {
+            position: _,
+            children,
+        }: &'a mdast::Paragraph,
     ) -> Result<(), ToMinimadError> {
-        Err(ToMinimadError::UnsupportedNode("Paragraph"))
+        // generate a new line
+        self.lines.push(Line::Normal(Composite {
+            style: CompositeStyle::Paragraph,
+            compounds: vec![],
+        }));
+        for child in children {
+            self.node(child)?;
+        }
+        Ok(())
     }
 
     /// Complete the emission
