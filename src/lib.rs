@@ -56,7 +56,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Root(root) => self.root(root),
             mdast::Node::Heading(heading) => self.heading(heading),
             mdast::Node::Text(text) => self.text(text),
-            mdast::Node::InlineCode(inline_code) => self.inline_code(text),
+            mdast::Node::InlineCode(inline_code) => self.inline_code(inline_code),
             // -- Unsupported node types --
             mdast::Node::BlockQuote(_) => Err(ToMinimadError::UnsupportedNode("BlockQuote")),
             mdast::Node::FootnoteDefinition(_) => {
