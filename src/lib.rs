@@ -2,7 +2,7 @@
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use minimad::{Composite, CompositeStyle, Line};
+use minimad::{Composite, CompositeStyle, Compound, Line};
 
 #[derive(Clone, Debug, Display, Error)]
 pub enum ToMinimadError {
@@ -27,6 +27,14 @@ struct Emitter<'a> {
     lines: Vec<minimad::Line<'a>>,
     /// Conversion options
     options: Options,
+    /// If bold is currently setted
+    bold: bool,
+    /// If italic is currently setted
+    italic: bool,
+    /// If code is currently setted
+    code: bool,
+    /// If strikeout is currently setted
+    strikeout: bool,
 }
 impl<'a> Emitter<'a> {
     /// Create a new, empty emitter
@@ -34,6 +42,10 @@ impl<'a> Emitter<'a> {
         Self {
             lines: vec![],
             options,
+            bold: false,
+            italic: false,
+            code: false,
+            strikeout: false,
         }
     }
 
@@ -43,6 +55,7 @@ impl<'a> Emitter<'a> {
         match node {
             mdast::Node::Root(root) => self.root(root),
             mdast::Node::Heading(heading) => self.heading(heading),
+            mdast::Node::Text(text) => self.text(text),
             // -- Unsupported node types --
             mdast::Node::BlockQuote(_) => Err(ToMinimadError::UnsupportedNode("BlockQuote")),
             mdast::Node::FootnoteDefinition(_) => {
@@ -77,7 +90,6 @@ impl<'a> Emitter<'a> {
             mdast::Node::Link(_) => Err(ToMinimadError::UnsupportedNode("Link")),
             mdast::Node::LinkReference(_) => Err(ToMinimadError::UnsupportedNode("LinkReference")),
             mdast::Node::Strong(_) => Err(ToMinimadError::UnsupportedNode("Strong")),
-            mdast::Node::Text(_) => Err(ToMinimadError::UnsupportedNode("Text")),
             mdast::Node::Code(_) => Err(ToMinimadError::UnsupportedNode("Code")),
             mdast::Node::Math(_) => Err(ToMinimadError::UnsupportedNode("Math")),
             mdast::Node::MdxFlowExpression(_) => {
@@ -126,8 +138,45 @@ impl<'a> Emitter<'a> {
         Ok(())
     }
 
+    /// Emit an heading node
+    fn text(
+        &mut self,
+        mdast::Text { value, position: _ }: &'a mdast::Text,
+    ) -> Result<(), ToMinimadError> {
+        let compound = Compound {
+            src: &value,
+            bold: self.bold,
+            italic: self.italic,
+            code: self.code,
+            strikeout: self.strikeout,
+        };
+        self.current_compound_line().push(compound);
+        Ok(())
+    }
+
     /// Complete the emission
     fn finish(self) -> minimad::Text<'a> {
         minimad::Text { lines: self.lines }
+    }
+
+    /// Get the last line where to push inline elements
+    fn current_compound_line(&mut self) -> &mut Vec<Compound<'a>> {
+        if !matches!(
+            self.lines.last(),
+            Some(Line::Normal(_) | Line::CodeFence(_)),
+        ) {
+            self.lines.push(Line::Normal(Composite {
+                style: CompositeStyle::Paragraph,
+                compounds: vec![],
+            }));
+        }
+        let Some(
+            Line::Normal(Composite { compounds, .. })
+            | Line::CodeFence(Composite { compounds, .. }),
+        ) = self.lines.last_mut()
+        else {
+            unreachable!()
+        };
+        compounds
     }
 }
