@@ -56,6 +56,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Root(root) => self.root(root),
             mdast::Node::Heading(heading) => self.heading(heading),
             mdast::Node::Text(text) => self.text(text),
+            mdast::Node::InlineCode(inline_code) => self.inline_code(text),
             // -- Unsupported node types --
             mdast::Node::BlockQuote(_) => Err(ToMinimadError::UnsupportedNode("BlockQuote")),
             mdast::Node::FootnoteDefinition(_) => {
@@ -69,7 +70,6 @@ impl<'a> Emitter<'a> {
             mdast::Node::Toml(_) => Err(ToMinimadError::UnsupportedNode("Toml")),
             mdast::Node::Yaml(_) => Err(ToMinimadError::UnsupportedNode("Yaml")),
             mdast::Node::Break(_) => Err(ToMinimadError::UnsupportedNode("Break")),
-            mdast::Node::InlineCode(_) => Err(ToMinimadError::UnsupportedNode("InlineCode")),
             mdast::Node::InlineMath(_) => Err(ToMinimadError::UnsupportedNode("InlineMath")),
             mdast::Node::Delete(_) => Err(ToMinimadError::UnsupportedNode("Delete")),
             mdast::Node::Emphasis(_) => Err(ToMinimadError::UnsupportedNode("Emphasis")),
@@ -138,7 +138,7 @@ impl<'a> Emitter<'a> {
         Ok(())
     }
 
-    /// Emit an heading node
+    /// Emit a text node
     fn text(
         &mut self,
         mdast::Text { value, position: _ }: &'a mdast::Text,
@@ -148,6 +148,22 @@ impl<'a> Emitter<'a> {
             bold: self.bold,
             italic: self.italic,
             code: self.code,
+            strikeout: self.strikeout,
+        };
+        self.current_compound_line().push(compound);
+        Ok(())
+    }
+
+    /// Emit an inline code node
+    fn inline_code(
+        &mut self,
+        mdast::InlineCode { position: _, value }: &'a mdast::InlineCode,
+    ) -> Result<(), ToMinimadError> {
+        let compound = Compound {
+            src: &value,
+            bold: false,
+            italic: false,
+            code: true,
             strikeout: self.strikeout,
         };
         self.current_compound_line().push(compound);
