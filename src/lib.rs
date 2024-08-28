@@ -26,7 +26,7 @@ struct Emitter<'a> {
     /// Lines already emitted
     lines: Vec<minimad::Line<'a>>,
     /// Conversion options
-    options: Options,
+    _options: Options,
     /// If bold is currently setted
     bold: bool,
     /// If italic is currently setted
@@ -41,7 +41,7 @@ impl<'a> Emitter<'a> {
     fn new(options: Options) -> Self {
         Self {
             lines: vec![],
-            options,
+            _options: options,
             bold: false,
             italic: false,
             code: false,

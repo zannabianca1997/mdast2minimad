@@ -8,7 +8,6 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser};
-use minimad::Options;
 
 #[derive(Debug, Parser)]
 #[command(version = "0.1.0", name = "compare_asts")]
