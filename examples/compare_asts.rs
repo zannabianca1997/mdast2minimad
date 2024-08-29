@@ -17,6 +17,8 @@ struct Cli {
     markdown: PathBuf,
     /// Output of the direct `minimad` parsing
     minimad: Option<PathBuf>,
+    /// Output of the `markdown` parsed ast
+    parsed: Option<PathBuf>,
     /// Output of the converted ast
     converted: Option<PathBuf>,
 
@@ -72,10 +74,12 @@ fn main() -> Result<()> {
     let Cli {
         markdown,
         minimad,
+        parsed,
         converted,
         mm_opt,
     } = Cli::parse();
     let minimad_file = minimad.unwrap_or_else(|| add_way_spec(&markdown, "minimad"));
+    let parsed_file = parsed.unwrap_or_else(|| add_way_spec(&markdown, "parsed"));
     let converted_file = converted.unwrap_or_else(|| add_way_spec(&markdown, "converted"));
     let mm_opt = mm_opt.build();
 
@@ -89,6 +93,7 @@ fn main() -> Result<()> {
     // Conversion
     let parsed_md = markdown::to_mdast(&markdown, &Default::default())
         .expect("Pure markdown has no syntax errors");
+    fs::write(parsed_file, format!("{parsed_md:#?}")).context("Cannot write to parsed file")?;
     let converted = mdast2minimad::to_minimad(&parsed_md).context("Cannot convert the markdown")?;
     fs::write(converted_file, format!("{converted:#?}"))
         .context("Cannot write to converted file")?;
