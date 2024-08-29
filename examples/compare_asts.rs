@@ -56,20 +56,6 @@ impl MinimadOptions {
     }
 }
 
-fn add_way_spec(markdown: &Path, spec: impl AsRef<OsStr>) -> PathBuf {
-    let stem = markdown.file_stem().unwrap_or_default();
-    let extension = markdown.extension();
-    let mut name = OsString::new();
-    name.push(stem);
-    name.push(".");
-    name.push(spec);
-    if let Some(extension) = extension {
-        name.push(".");
-        name.push(extension);
-    }
-    markdown.with_file_name(name)
-}
-
 fn main() -> Result<()> {
     let Cli {
         markdown,
@@ -78,9 +64,9 @@ fn main() -> Result<()> {
         converted,
         mm_opt,
     } = Cli::parse();
-    let minimad_file = minimad.unwrap_or_else(|| add_way_spec(&markdown, "minimad"));
-    let parsed_file = parsed.unwrap_or_else(|| add_way_spec(&markdown, "parsed"));
-    let converted_file = converted.unwrap_or_else(|| add_way_spec(&markdown, "converted"));
+    let minimad_file = minimad.unwrap_or_else(|| markdown.with_extension("minimad"));
+    let parsed_file = parsed.unwrap_or_else(|| markdown.with_extension("markdown"));
+    let converted_file = converted.unwrap_or_else(|| markdown.with_extension("converted"));
     let mm_opt = mm_opt.build();
 
     // read the sources
@@ -94,7 +80,9 @@ fn main() -> Result<()> {
     let parsed_md = markdown::to_mdast(&markdown, &Default::default())
         .expect("Pure markdown has no syntax errors");
     fs::write(parsed_file, format!("{parsed_md:#?}")).context("Cannot write to parsed file")?;
-    let converted = mdast2minimad::to_minimad(&parsed_md).context("Cannot convert the markdown")?;
+    let converted = mdast2minimad::to_minimad(&parsed_md)
+        .map_err(|err| err.into_static())
+        .context("Cannot convert the markdown")?;
     fs::write(converted_file, format!("{converted:#?}"))
         .context("Cannot write to converted file")?;
 
