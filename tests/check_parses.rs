@@ -44,5 +44,10 @@ macro_rules! tests {
 // <test-index>
 tests! {
     basic: "sources/basic.md",
+    mod paragraphs {
+        multiline: "sources/paragraphs/multiline.md",
+        multiple: "sources/paragraphs/multiple.md",
+        single_line: "sources/paragraphs/single_line.md",
+    },
 }
 // </test-index>
