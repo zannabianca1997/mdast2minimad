@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Args, Parser};
+use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(version = "0.1.0", name = "display")]
