@@ -131,6 +131,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Root(root) => self.root(root),
             mdast::Node::Heading(heading) => self.heading(heading),
             mdast::Node::Text(text) => self.text(text),
+            mdast::Node::Paragraph(paragraph) => self.paragraph(paragraph),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
@@ -202,6 +203,22 @@ impl<'a> Emitter<'a> {
             self.line().push(compound);
         }
         Ok(())
+    }
+
+    /// emit a `Paragraph` node
+    fn paragraph(
+        &mut self,
+        mdast::Paragraph {
+            children,
+            position: _,
+        }: &'a mdast::Paragraph,
+    ) -> Result<(), ToMinimadError<'a>> {
+        self.phrasing(minimad::CompositeStyle::Paragraph, |this| {
+            for child in children {
+                this.node(child)?
+            }
+            Ok(())
+        })
     }
 }
 
