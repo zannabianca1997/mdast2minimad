@@ -4,7 +4,7 @@ use std::{borrow::Cow, mem};
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use minimad::Composite;
+use minimad::{Composite, Compound};
 
 #[derive(Clone, Debug, Display, Error)]
 /// Error while converting the AST into a `minimad` text
@@ -77,21 +77,44 @@ enum ContentModel<'a> {
     },
 }
 
+/// Represent the current style of the emitter
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Style {
+    pub bold: bool,
+    pub italic: bool,
+    pub strikeout: bool,
+}
+impl Default for Style {
+    fn default() -> Self {
+        Self {
+            bold: false,
+            italic: false,
+            strikeout: false,
+        }
+    }
+}
+
 /// Minimad code emitter
 struct Emitter<'a> {
     /// Lines already emitted
     lines: Vec<minimad::Line<'a>>,
     /// Current content model
     model: Option<ContentModel<'a>>,
+    /// Current style of the emitter
+    style: Style,
     /// Conversion options
     _options: Options,
 }
+
+// --- Emitter API ---
+
 impl<'a> Emitter<'a> {
     /// Create a new, empty emitter
     fn new(options: Options) -> Self {
         Self {
             lines: vec![],
             model: None,
+            style: Style::default(),
             _options: options,
         }
     }
@@ -107,11 +130,16 @@ impl<'a> Emitter<'a> {
         match node {
             mdast::Node::Root(root) => self.root(root),
             mdast::Node::Heading(heading) => self.heading(heading),
+            mdast::Node::Text(text) => self.text(text),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
     }
+}
 
+// -- Implementation of all supported node type --
+
+impl<'a> Emitter<'a> {
     /// emit a `Root` node
     fn root(
         &mut self,
@@ -146,6 +174,40 @@ impl<'a> Emitter<'a> {
         })
     }
 
+    /// emit a `Text` node
+    fn text(
+        &mut self,
+        mdast::Text { value, position: _ }: &'a mdast::Text,
+    ) -> Result<(), ToMinimadError<'a>> {
+        let mut lines = value.lines();
+        if let Some(line) = lines.next() {
+            let compound = Compound {
+                src: line,
+                bold: self.style.bold,
+                italic: self.style.italic,
+                code: false,
+                strikeout: self.style.strikeout,
+            };
+            self.line().push(compound);
+        }
+        for line in lines {
+            self.newline();
+            let compound = Compound {
+                src: line,
+                bold: self.style.bold,
+                italic: self.style.italic,
+                code: false,
+                strikeout: self.style.strikeout,
+            };
+            self.line().push(compound);
+        }
+        Ok(())
+    }
+}
+
+// -- Model switching and accessing --
+
+impl<'a> Emitter<'a> {
     /// Temporarly change the content model to phrasing
     fn phrasing<R>(
         &mut self,
@@ -178,6 +240,42 @@ impl<'a> Emitter<'a> {
         }
         // return the function result
         res
+    }
+
+    /// Return the current line
+    fn line(&mut self) -> &mut Vec<Compound<'a>> {
+        match &mut self.model {
+            Some(ContentModel::Phrasing {
+                style: _,
+                compounds,
+            }) => compounds,
+            model @ (None | Some(ContentModel::Flow)) => {
+                // If not phrasing (only in invalid ASTs), or if the model is undefined, assume we begin a new paragraph
+                *model = Some(ContentModel::Phrasing {
+                    style: minimad::CompositeStyle::Paragraph,
+                    compounds: vec![],
+                });
+                let Some(ContentModel::Phrasing {
+                    style: _,
+                    compounds,
+                }) = model
+                else {
+                    unreachable!()
+                };
+                compounds
+            }
+        }
+    }
+
+    /// Start a new line
+    fn newline(&mut self) {
+        match &mut self.model {
+            Some(ContentModel::Phrasing { style, compounds }) => todo!(),
+            None | Some(ContentModel::Flow) => {
+                // In this models a newline has no meaning. The method should only be called when in phrasing contexts.
+                // Anyway ignoring to be lenient on malformed ASTs
+            }
+        }
     }
 }
 
