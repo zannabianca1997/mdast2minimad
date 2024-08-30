@@ -287,7 +287,12 @@ impl<'a> Emitter<'a> {
     /// Start a new line
     fn newline(&mut self) {
         match &mut self.model {
-            Some(ContentModel::Phrasing { style, compounds }) => todo!(),
+            Some(ContentModel::Phrasing { style, compounds }) => {
+                self.lines.push(minimad::Line::Normal(Composite {
+                    style: *style,
+                    compounds: mem::take(compounds),
+                }))
+            }
             None | Some(ContentModel::Flow) => {
                 // In this models a newline has no meaning. The method should only be called when in phrasing contexts.
                 // Anyway ignoring to be lenient on malformed ASTs
