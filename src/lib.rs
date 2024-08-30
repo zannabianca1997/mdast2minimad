@@ -1,9 +1,10 @@
 #![doc = include_str!("../README.md")]
 
-use std::borrow::Cow;
+use std::{borrow::Cow, mem};
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
+use minimad::Composite;
 
 #[derive(Clone, Debug, Display, Error)]
 /// Error while converting the AST into a `minimad` text
@@ -62,10 +63,26 @@ pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinim
 /// Options for the conversion
 pub struct Options {}
 
+/// Represent the current content model of the emitter
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ContentModel<'a> {
+    /// Flow content represent the sections of document.
+    Flow,
+    /// Phrasing content represent the text in a document, and its markup.
+    Phrasing {
+        /// Style of the lines
+        style: minimad::CompositeStyle,
+        /// Line being built
+        compounds: Vec<minimad::Compound<'a>>,
+    },
+}
+
 /// Minimad code emitter
 struct Emitter<'a> {
     /// Lines already emitted
     lines: Vec<minimad::Line<'a>>,
+    /// Current content model
+    model: Option<ContentModel<'a>>,
     /// Conversion options
     _options: Options,
 }
@@ -74,22 +91,93 @@ impl<'a> Emitter<'a> {
     fn new(options: Options) -> Self {
         Self {
             lines: vec![],
+            model: None,
             _options: options,
-        }
-    }
-
-    /// Emit a node
-    fn node(&mut self, node: &'a mdast::Node) -> Result<(), ToMinimadError<'a>> {
-        // emit the node
-        match node {
-            // Catch all for unsupported nodes
-            other => Err(ToMinimadError::unsupported_node(other)),
         }
     }
 
     /// Complete the emission
     fn finish(self) -> minimad::Text<'a> {
         minimad::Text { lines: self.lines }
+    }
+
+    /// Emit an arbitrary node
+    fn node(&mut self, node: &'a mdast::Node) -> Result<(), ToMinimadError<'a>> {
+        // emit the node
+        match node {
+            mdast::Node::Root(root) => self.root(root),
+            mdast::Node::Heading(heading) => self.heading(heading),
+            // Catch all for unsupported nodes
+            other => Err(ToMinimadError::unsupported_node(other)),
+        }
+    }
+
+    /// emit a `Root` node
+    fn root(
+        &mut self,
+        mdast::Root {
+            children,
+            position: _,
+        }: &'a mdast::Root,
+    ) -> Result<(), ToMinimadError<'a>> {
+        // root does not limit his content in any way
+        for child in children {
+            self.node(child)?;
+        }
+        Ok(())
+    }
+
+    /// emit a `Heading` node
+    fn heading(
+        &mut self,
+        mdast::Heading {
+            children,
+            position: _,
+            depth,
+        }: &'a mdast::Heading,
+    ) -> Result<(), ToMinimadError<'a>> {
+        // Open a new phrasing session
+        self.phrasing(minimad::CompositeStyle::Header(*depth), |this| {
+            // emit the childrens in phrasing mode
+            for child in children {
+                this.node(child)?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Temporarly change the content model to phrasing
+    fn phrasing<R>(
+        &mut self,
+        style: minimad::CompositeStyle,
+        fun: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        // remove the old model, and if it was undefined set it to flow
+        let mut old_model = self.model.take().unwrap_or(ContentModel::Flow);
+        if let ContentModel::Phrasing { style, compounds } = &mut old_model {
+            // the old model was in the middle of a line. This can happen only in invalid ASTs, as the nodes that use `Phrasing`
+            // as inner content should be called only in `Flow` model. Anyway, let's not mix up the content emitting that line
+            self.lines.push(minimad::Line::Normal(Composite {
+                style: *style,
+                compounds: mem::take(compounds),
+            }));
+        }
+        // set the new model as phrasing with the given style
+        self.model = Some(ContentModel::Phrasing {
+            style,
+            compounds: vec![],
+        });
+        // call the inner function
+        let res = fun(self);
+        // put the old model back
+        let residuals = mem::replace(&mut self.model, Some(old_model));
+        // if some compounds remains, emit them
+        if let Some(ContentModel::Phrasing { style, compounds }) = residuals {
+            self.lines
+                .push(minimad::Line::Normal(Composite { style, compounds }));
+        }
+        // return the function result
+        res
     }
 }
 
