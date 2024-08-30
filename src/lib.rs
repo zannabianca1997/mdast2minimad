@@ -4,7 +4,7 @@ use std::{borrow::Cow, mem};
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use minimad::{Composite, Compound};
+use minimad::{Composite, Compound, Line};
 
 #[derive(Clone, Debug, Display, Error)]
 /// Error while converting the AST into a `minimad` text
@@ -59,15 +59,36 @@ pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinim
     Ok(emitter.finish())
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 /// Options for the conversion
-pub struct Options {}
+pub struct Options {
+    /// If each header need spacing after
+    pub header_spacing: [bool; 6],
+}
+impl Options {
+    fn header_spacing(&self, depth: u8) -> bool {
+        self.header_spacing
+            .get((depth - 1) as usize)
+            .copied()
+            .unwrap_or(false) // default to no spacing. Only in invalid ASTs
+    }
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            header_spacing: [true, false, false, false, false, false],
+        }
+    }
+}
 
 /// Represent the current content model of the emitter
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContentModel<'a> {
     /// Flow content represent the sections of document.
-    Flow,
+    Flow {
+        /// If the last flow element need spacing
+        spacing: bool,
+    },
     /// Phrasing content represent the text in a document, and its markup.
     Phrasing {
         /// Style of the lines
@@ -75,6 +96,29 @@ enum ContentModel<'a> {
         /// Line being built
         compounds: Vec<minimad::Compound<'a>>,
     },
+}
+impl ContentModel<'_> {
+    fn need_spacing(&self) -> bool {
+        match self {
+            ContentModel::Flow { spacing } => *spacing,
+            ContentModel::Phrasing { .. } => {
+                // Spacing has no sense between phrasing elements.
+                // Should appear only in invalid ASTs
+                // Defaulting to not giving it
+                false
+            }
+        }
+    }
+
+    fn set_spacing(&mut self, new_spacing: bool) {
+        match self {
+            ContentModel::Flow { spacing } => *spacing = new_spacing,
+            ContentModel::Phrasing { .. } => {
+                // Here the spacing has no sense.
+                // Should appear only in invalid ASTs
+            }
+        }
+    }
 }
 
 /// Represent the current style of the emitter
@@ -103,7 +147,7 @@ struct Emitter<'a> {
     /// Current style of the emitter
     style: Style,
     /// Conversion options
-    _options: Options,
+    options: Options,
 }
 
 // --- Emitter API ---
@@ -115,7 +159,7 @@ impl<'a> Emitter<'a> {
             lines: vec![],
             model: None,
             style: Style::default(),
-            _options: options,
+            options,
         }
     }
 
@@ -166,13 +210,17 @@ impl<'a> Emitter<'a> {
         }: &'a mdast::Heading,
     ) -> Result<(), ToMinimadError<'a>> {
         // Open a new phrasing session
-        self.phrasing(minimad::CompositeStyle::Header(*depth), |this| {
-            // emit the childrens in phrasing mode
-            for child in children {
-                this.node(child)?;
-            }
-            Ok(())
-        })
+        self.phrasing(
+            minimad::CompositeStyle::Header(*depth),
+            self.options.header_spacing(*depth),
+            |this| {
+                // emit the childrens in phrasing mode
+                for child in children {
+                    this.node(child)?;
+                }
+                Ok(())
+            },
+        )
     }
 
     /// emit a `Text` node
@@ -213,7 +261,7 @@ impl<'a> Emitter<'a> {
             position: _,
         }: &'a mdast::Paragraph,
     ) -> Result<(), ToMinimadError<'a>> {
-        self.phrasing(minimad::CompositeStyle::Paragraph, |this| {
+        self.phrasing(minimad::CompositeStyle::Paragraph, true, |this| {
             for child in children {
                 this.node(child)?
             }
@@ -229,10 +277,14 @@ impl<'a> Emitter<'a> {
     fn phrasing<R>(
         &mut self,
         style: minimad::CompositeStyle,
+        spacing: bool,
         fun: impl FnOnce(&mut Self) -> R,
     ) -> R {
         // remove the old model, and if it was undefined set it to flow
-        let mut old_model = self.model.take().unwrap_or(ContentModel::Flow);
+        let mut old_model = self
+            .model
+            .take()
+            .unwrap_or(ContentModel::Flow { spacing: false });
         if let ContentModel::Phrasing { style, compounds } = &mut old_model {
             // the old model was in the middle of a line. This can happen only in invalid ASTs, as the nodes that use `Phrasing`
             // as inner content should be called only in `Flow` model. Anyway, let's not mix up the content emitting that line
@@ -241,6 +293,10 @@ impl<'a> Emitter<'a> {
                 compounds: mem::take(compounds),
             }));
         }
+        // put a spacing newline between flows element
+        if old_model.need_spacing() {
+            self.emptyline()
+        }
         // set the new model as phrasing with the given style
         self.model = Some(ContentModel::Phrasing {
             style,
@@ -248,7 +304,8 @@ impl<'a> Emitter<'a> {
         });
         // call the inner function
         let res = fun(self);
-        // put the old model back
+        // put the old model back, settign spacing
+        old_model.set_spacing(spacing);
         let residuals = mem::replace(&mut self.model, Some(old_model));
         // if some compounds remains, emit them
         if let Some(ContentModel::Phrasing { style, compounds }) = residuals {
@@ -266,7 +323,7 @@ impl<'a> Emitter<'a> {
                 style: _,
                 compounds,
             }) => compounds,
-            model @ (None | Some(ContentModel::Flow)) => {
+            model @ (None | Some(ContentModel::Flow { .. })) => {
                 // If not phrasing (only in invalid ASTs), or if the model is undefined, assume we begin a new paragraph
                 *model = Some(ContentModel::Phrasing {
                     style: minimad::CompositeStyle::Paragraph,
@@ -293,11 +350,16 @@ impl<'a> Emitter<'a> {
                     compounds: mem::take(compounds),
                 }))
             }
-            None | Some(ContentModel::Flow) => {
+            None | Some(ContentModel::Flow { .. }) => {
                 // In this models a newline has no meaning. The method should only be called when in phrasing contexts.
                 // Anyway ignoring to be lenient on malformed ASTs
             }
         }
+    }
+
+    /// Emit a empty line
+    fn emptyline(&mut self) {
+        self.lines.push(Line::new_paragraph(vec![]))
     }
 }
 
