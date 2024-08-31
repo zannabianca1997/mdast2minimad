@@ -64,6 +64,8 @@ pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinim
 pub struct Options {
     /// If each header need spacing after
     pub header_spacing: [bool; 6],
+    /// How to style the links
+    pub links_style: Styling,
 }
 impl Options {
     fn header_spacing(&self, depth: u8) -> bool {
@@ -77,8 +79,26 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             header_spacing: [true, false, false, false, false, false],
+            links_style: Styling {
+                bold: None,
+                italic: None,
+                strikeout: None,
+            },
         }
     }
+}
+
+/// Set up the styling of a node
+///
+/// If a value is none, it will follow the style of the surrounding text
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Styling {
+    /// Set if the node is bold
+    pub bold: Option<bool>,
+    /// Set if the node is italic
+    pub italic: Option<bool>,
+    /// Set if the node is strikeout
+    pub strikeout: Option<bool>,
 }
 
 /// Represent the current content model of the emitter
@@ -124,9 +144,9 @@ impl ContentModel<'_> {
 /// Represent the current style of the emitter
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Style {
-    pub bold: bool,
-    pub italic: bool,
-    pub strikeout: bool,
+    bold: bool,
+    italic: bool,
+    strikeout: bool,
 }
 impl Default for Style {
     fn default() -> Self {
@@ -181,6 +201,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Emphasis(emphasis) => self.emphasis(emphasis),
             mdast::Node::InlineCode(inline_code) => self.inline_code(inline_code),
             mdast::Node::Delete(delete) => self.delete(delete),
+            mdast::Node::Link(link) => self.link(link),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
@@ -294,6 +315,7 @@ impl<'a> Emitter<'a> {
         self.style.bold = old_style;
         Ok(())
     }
+
     /// emit a `Emphasis` node
     fn emphasis(
         &mut self,
@@ -309,6 +331,7 @@ impl<'a> Emitter<'a> {
         self.style.italic = old_style;
         Ok(())
     }
+
     /// emit a `InlineCode` node
     fn inline_code(
         &mut self,
@@ -323,6 +346,7 @@ impl<'a> Emitter<'a> {
         );
         Ok(())
     }
+
     /// emit a `Delete` node
     fn delete(
         &mut self,
@@ -336,6 +360,33 @@ impl<'a> Emitter<'a> {
             self.node(child)?;
         }
         self.style.strikeout = old_style;
+        Ok(())
+    }
+
+    /// emit a `Link` node
+    fn link(
+        &mut self,
+        mdast::Link {
+            children,
+            position: _,
+            url: _,
+            title: _,
+        }: &'a mdast::Link,
+    ) -> Result<(), ToMinimadError<'a>> {
+        let new_style = Style {
+            bold: self.options.links_style.bold.unwrap_or(self.style.bold),
+            italic: self.options.links_style.italic.unwrap_or(self.style.italic),
+            strikeout: self
+                .options
+                .links_style
+                .strikeout
+                .unwrap_or(self.style.strikeout),
+        };
+        let old_style = mem::replace(&mut self.style, new_style);
+        for child in children {
+            self.node(child)?;
+        }
+        self.style = old_style;
         Ok(())
     }
 }
