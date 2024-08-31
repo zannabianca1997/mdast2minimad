@@ -176,6 +176,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Heading(heading) => self.heading(heading),
             mdast::Node::Text(text) => self.text(text),
             mdast::Node::Paragraph(paragraph) => self.paragraph(paragraph),
+            mdast::Node::Code(code) => self.code(code),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
@@ -264,6 +265,41 @@ impl<'a> Emitter<'a> {
         self.phrasing(minimad::CompositeStyle::Paragraph, true, |this| {
             for child in children {
                 this.node(child)?
+            }
+            Ok(())
+        })
+    }
+
+    /// emit a `Code` node
+    fn code(
+        &mut self,
+        mdast::Code {
+            value,
+            position: _,
+            lang: _,
+            meta: _,
+        }: &'a mdast::Code,
+    ) -> Result<(), ToMinimadError<'a>> {
+        self.phrasing(minimad::CompositeStyle::Code, true, |this| {
+            let mut lines = value.lines();
+            if let Some(line) = lines.next() {
+                this.line().push(Compound {
+                    src: line,
+                    bold: false,
+                    italic: false,
+                    code: false, // weird, but this is how minimad set is AST. Following to avoid surprises.
+                    strikeout: false,
+                });
+            }
+            for line in value.lines() {
+                this.newline();
+                this.line().push(Compound {
+                    src: line,
+                    bold: false,
+                    italic: false,
+                    code: false, // weird, but this is how minimad set is AST. Following to avoid surprises.
+                    strikeout: false,
+                })
             }
             Ok(())
         })
