@@ -12,3 +12,4 @@ derive_more = { version = "1.0.0", features = ["error", "display", "from", "debu
 anyhow = "1.0.86"
 clap = { version = "4.5.16", features = ["derive"] }
 termimad = "0.30.0"
+test-generator = "0.3.1"
