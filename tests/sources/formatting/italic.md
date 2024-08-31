@@ -1,0 +1,1 @@
+This line contains _italic_ text, in *both* way it can be specified

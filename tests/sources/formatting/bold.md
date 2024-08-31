@@ -1,0 +1,1 @@
+This line contains __bold__ text, in **both** way it can be specified
