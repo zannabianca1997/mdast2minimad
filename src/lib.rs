@@ -177,6 +177,10 @@ impl<'a> Emitter<'a> {
             mdast::Node::Text(text) => self.text(text),
             mdast::Node::Paragraph(paragraph) => self.paragraph(paragraph),
             mdast::Node::Code(code) => self.code(code),
+            mdast::Node::Strong(strong) => self.strong(strong),
+            mdast::Node::Emphasis(emphasis) => self.emphasis(emphasis),
+            mdast::Node::InlineCode(inline_code) => self.inline_code(inline_code),
+            mdast::Node::Delete(delete) => self.delete(delete),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
@@ -229,28 +233,13 @@ impl<'a> Emitter<'a> {
         &mut self,
         mdast::Text { value, position: _ }: &'a mdast::Text,
     ) -> Result<(), ToMinimadError<'a>> {
-        let mut lines = value.lines();
-        if let Some(line) = lines.next() {
-            let compound = Compound {
-                src: line,
-                bold: self.style.bold,
-                italic: self.style.italic,
-                code: false,
-                strikeout: self.style.strikeout,
-            };
-            self.line().push(compound);
-        }
-        for line in lines {
-            self.newline();
-            let compound = Compound {
-                src: line,
-                bold: self.style.bold,
-                italic: self.style.italic,
-                code: false,
-                strikeout: self.style.strikeout,
-            };
-            self.line().push(compound);
-        }
+        self.fmt_text(
+            &value,
+            self.style.bold,
+            self.style.italic,
+            false,
+            self.style.strikeout,
+        );
         Ok(())
     }
 
@@ -281,28 +270,73 @@ impl<'a> Emitter<'a> {
         }: &'a mdast::Code,
     ) -> Result<(), ToMinimadError<'a>> {
         self.phrasing(minimad::CompositeStyle::Code, true, |this| {
-            let mut lines = value.lines();
-            if let Some(line) = lines.next() {
-                this.line().push(Compound {
-                    src: line,
-                    bold: false,
-                    italic: false,
-                    code: false, // weird, but this is how minimad set is AST. Following to avoid surprises.
-                    strikeout: false,
-                });
-            }
-            for line in value.lines() {
-                this.newline();
-                this.line().push(Compound {
-                    src: line,
-                    bold: false,
-                    italic: false,
-                    code: false, // weird, but this is how minimad set is AST. Following to avoid surprises.
-                    strikeout: false,
-                })
-            }
+            this.fmt_text(
+                &value, false, false,
+                false, // weird, but this is how minimad set is AST. Following to avoid surprises.
+                false,
+            );
             Ok(())
         })
+    }
+
+    /// emit a `Strong` node
+    fn strong(
+        &mut self,
+        mdast::Strong {
+            children,
+            position: _,
+        }: &'a mdast::Strong,
+    ) -> Result<(), ToMinimadError<'a>> {
+        let old_style = mem::replace(&mut self.style.bold, true);
+        for child in children {
+            self.node(child)?;
+        }
+        self.style.bold = old_style;
+        Ok(())
+    }
+    /// emit a `Emphasis` node
+    fn emphasis(
+        &mut self,
+        mdast::Emphasis {
+            children,
+            position: _,
+        }: &'a mdast::Emphasis,
+    ) -> Result<(), ToMinimadError<'a>> {
+        let old_style = mem::replace(&mut self.style.italic, true);
+        for child in children {
+            self.node(child)?;
+        }
+        self.style.italic = old_style;
+        Ok(())
+    }
+    /// emit a `InlineCode` node
+    fn inline_code(
+        &mut self,
+        mdast::InlineCode { value, position: _ }: &'a mdast::InlineCode,
+    ) -> Result<(), ToMinimadError<'a>> {
+        self.fmt_text(
+            &value,
+            self.style.bold,
+            self.style.italic,
+            true,
+            self.style.strikeout,
+        );
+        Ok(())
+    }
+    /// emit a `Delete` node
+    fn delete(
+        &mut self,
+        mdast::Delete {
+            children,
+            position: _,
+        }: &'a mdast::Delete,
+    ) -> Result<(), ToMinimadError<'a>> {
+        let old_style = mem::replace(&mut self.style.strikeout, true);
+        for child in children {
+            self.node(child)?;
+        }
+        self.style.strikeout = old_style;
+        Ok(())
     }
 }
 
@@ -396,6 +430,30 @@ impl<'a> Emitter<'a> {
     /// Emit a empty line
     fn emptyline(&mut self) {
         self.lines.push(Line::new_paragraph(vec![]))
+    }
+
+    /// Emit formatted texts
+    fn fmt_text(&mut self, value: &'a str, bold: bool, italic: bool, code: bool, strikeout: bool) {
+        let mut lines = value.split("\r\n").flat_map(|l| l.split('\n'));
+        if let Some(line) = lines.next() {
+            self.line().push(Compound {
+                src: line,
+                bold,
+                italic,
+                code,
+                strikeout,
+            });
+        }
+        for line in lines {
+            self.newline();
+            self.line().push(Compound {
+                src: line,
+                bold,
+                italic,
+                code,
+                strikeout,
+            })
+        }
     }
 }
 
