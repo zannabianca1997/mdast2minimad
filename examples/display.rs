@@ -14,10 +14,17 @@ struct Cli {
     /// Use minimad as a parser, not markdown
     #[clap(long, short)]
     minimad: bool,
+    /// Print the generated ASTs
+    #[clap(long = "ast", short = 'a')]
+    print_ast: bool,
 }
 
 fn main() -> Result<()> {
-    let Cli { markdown, minimad } = Cli::parse();
+    let Cli {
+        markdown,
+        minimad,
+        print_ast,
+    } = Cli::parse();
 
     // read the sources
     let src = fs::read_to_string(markdown).context("Cannot read input file")?;
@@ -32,9 +39,17 @@ fn main() -> Result<()> {
         // Leak it: the ast must live until the print, and then the program will end.
         // There is no merit in keeping track of the AST lifetime
         let ast = &*Box::leak(Box::new(ast));
+
+        if print_ast {
+            println!("{:#?}", ast)
+        }
         // Using our converter
         mdast2minimad::to_minimad(&ast).context("Error during ast conversion")?
     };
+
+    if print_ast {
+        println!("{:#?}", text)
+    }
 
     // Display with `termimad`
     let formatted = termimad::FmtText::from_text(
