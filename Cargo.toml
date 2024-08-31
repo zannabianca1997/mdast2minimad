@@ -6,9 +6,19 @@ edition = "2021"
 [dependencies]
 minimad = "0.13.1"
 markdown = "1.0.0-alpha.20"
-derive_more = { version = "1.0.0", features = ["error", "display", "from", "debug"] }
+derive_more = { version = "1.0.0", features = [
+    "error",
+    "display",
+    "from",
+    "debug",
+] }
 
 [dev-dependencies]
 anyhow = "1.0.86"
 clap = { version = "4.5.16", features = ["derive"] }
 termimad = "0.30.0"
+
+[build-dependencies]
+proc-macro2 = "1.0.86"
+quote = "1.0.37"
+slugify = "0.1.0"

@@ -9,45 +9,4 @@ fn test_source(source: &'static str) {
     }
 }
 
-/// Macro to create the test function for every source, and nested ones
-macro_rules! tests {
-    (
-        $name:ident : $path:literal
-        $( , $($more:tt)* )?
-    ) => {
-        #[test]
-        fn $name() {
-            crate::test_source(include_str!($path))
-        }
-
-        $(
-            tests!{ $($more)* }
-        )?
-    };
-    (
-         mod $name:ident { $($inner:tt)* }
-        $( , $($more:tt)* )?
-    ) => {
-        mod $name {
-            tests! { $($inner)* }
-        }
-
-        $(
-            tests!{ $($more)* }
-        )?
-    };
-    () => {};
-}
-
-// Test sources.
-// The list can be updated with the python script `update_sources.py`. The preceding and ending markers are used to find the index in the code.
-// <test-index>
-tests! {
-    basic: "sources/basic.md",
-    mod paragraphs {
-        multiline: "sources/paragraphs/multiline.md",
-        multiple: "sources/paragraphs/multiple.md",
-        single_line: "sources/paragraphs/single_line.md",
-    },
-}
-// </test-index>
+include! {env!("TEST_SOURCES_RS")}
