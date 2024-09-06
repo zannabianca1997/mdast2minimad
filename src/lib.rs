@@ -204,6 +204,10 @@ impl<'a> Emitter<'a> {
             mdast::Node::Delete(delete) => self.delete(delete),
             mdast::Node::Link(link) => self.link(link),
             mdast::Node::List(list) => self.list(list),
+            // Nodes that are supported only as child of others
+            list_item @ mdast::Node::ListItem(_) => {
+                Err(ToMinimadError::unsupported_child_node(list_item))
+            }
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
