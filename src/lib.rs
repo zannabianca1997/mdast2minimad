@@ -1,59 +1,60 @@
 #![doc = include_str!("../README.md")]
 
-use std::{borrow::Cow, mem};
+use std::mem;
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use minimad::{Composite, Compound, Line};
+use markdown::mdast::Node;
+use minimad::{Composite, CompositeStyle, Compound, Line};
 
 #[derive(Clone, Debug, Display, Error)]
 /// Error while converting the AST into a `minimad` text
-pub enum ToMinimadError<'a> {
-    #[display("`{}` node is not supported", type_of(node))]
-    UnsupportedNode { node: Cow<'a, mdast::Node> },
-    #[display(
-        "`{}` node is not supported as a child of a `{}` node",
-        type_of(child),
-        type_of(parent)
-    )]
-    UnsupportedChildNode {
-        child: Cow<'a, mdast::Node>,
-        parent: Cow<'a, mdast::Node>,
+pub enum ToMinimadError {
+    #[display("While emitting a `{node}` node")]
+    WhileEmitting {
+        node: &'static str,
+        source: Box<ToMinimadError>,
     },
+    #[display("`{node}` node is not supported")]
+    UnsupportedNode { node: &'static str },
+    #[display("`{child}` node is not supported as a child")]
+    UnsupportedChildNode { child: &'static str },
+    #[display("Numbered lists are not supported")]
+    UnsupportedNumberedLists,
+    #[display("`minimad` supports nested list only up to 255 levels")]
+    ListTooMuchNested,
 }
-impl<'a> ToMinimadError<'a> {
-    fn unsupported_node(node: &'a mdast::Node) -> Self {
+impl ToMinimadError {
+    fn unsupported_node(node: &mdast::Node) -> Self {
         Self::UnsupportedNode {
-            node: Cow::Borrowed(node),
+            node: type_of(node),
         }
     }
-    fn unsupported_child_node(child: &'a mdast::Node, parent: &'a mdast::Node) -> Self {
+    fn unsupported_child_node(child: &mdast::Node) -> Self {
         Self::UnsupportedChildNode {
-            child: Cow::Borrowed(child),
-            parent: Cow::Borrowed(parent),
+            child: type_of(child),
         }
     }
-
-    /// Make this error 'static, cloning the nodes it refers to
-    ///
-    /// This enable an error borrowing from the AST to be bubbled up over the AST itself
-    pub fn into_static(self) -> ToMinimadError<'static> {
-        match self {
-            ToMinimadError::UnsupportedNode { node } => ToMinimadError::UnsupportedNode {
-                node: Cow::Owned(node.into_owned()),
-            },
-            ToMinimadError::UnsupportedChildNode { child, parent } => {
-                ToMinimadError::UnsupportedChildNode {
-                    child: Cow::Owned(child.into_owned()),
-                    parent: Cow::Owned(parent.into_owned()),
-                }
-            }
+}
+trait WhileEmitting {
+    fn while_emitting(self, parent: &mdast::Node) -> Self;
+}
+impl WhileEmitting for ToMinimadError {
+    fn while_emitting(self, parent: &mdast::Node) -> Self {
+        Self::WhileEmitting {
+            node: type_of(parent),
+            source: Box::new(self),
         }
+    }
+}
+impl<T> WhileEmitting for Result<T, ToMinimadError> {
+    fn while_emitting(self, parent: &mdast::Node) -> Self {
+        self.map_err(|err| err.while_emitting(parent))
     }
 }
 
 /// Convert the markdown AST to a minimad Text
-pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinimadError<'a>> {
+pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinimadError> {
     let mut emitter = Emitter::new(Options::default());
     emitter.node(ast)?;
     Ok(emitter.finish())
@@ -189,7 +190,7 @@ impl<'a> Emitter<'a> {
     }
 
     /// Emit an arbitrary node
-    fn node(&mut self, node: &'a mdast::Node) -> Result<(), ToMinimadError<'a>> {
+    fn node(&mut self, node: &'a mdast::Node) -> Result<(), ToMinimadError> {
         // emit the node
         match node {
             mdast::Node::Root(root) => self.root(root),
@@ -202,9 +203,11 @@ impl<'a> Emitter<'a> {
             mdast::Node::InlineCode(inline_code) => self.inline_code(inline_code),
             mdast::Node::Delete(delete) => self.delete(delete),
             mdast::Node::Link(link) => self.link(link),
+            mdast::Node::List(list) => self.list(list),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
+        .while_emitting(node)
     }
 }
 
@@ -218,7 +221,7 @@ impl<'a> Emitter<'a> {
             children,
             position: _,
         }: &'a mdast::Root,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         // root does not limit his content in any way
         for child in children {
             self.node(child)?;
@@ -234,7 +237,7 @@ impl<'a> Emitter<'a> {
             position: _,
             depth,
         }: &'a mdast::Heading,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         // Open a new phrasing session
         self.phrasing(
             minimad::CompositeStyle::Header(*depth),
@@ -253,7 +256,7 @@ impl<'a> Emitter<'a> {
     fn text(
         &mut self,
         mdast::Text { value, position: _ }: &'a mdast::Text,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         self.fmt_text(
             &value,
             self.style.bold,
@@ -271,7 +274,7 @@ impl<'a> Emitter<'a> {
             children,
             position: _,
         }: &'a mdast::Paragraph,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         self.phrasing(minimad::CompositeStyle::Paragraph, true, |this| {
             for child in children {
                 this.node(child)?
@@ -289,7 +292,7 @@ impl<'a> Emitter<'a> {
             lang: _,
             meta: _,
         }: &'a mdast::Code,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         self.phrasing(minimad::CompositeStyle::Code, true, |this| {
             this.fmt_text(
                 &value, false, false,
@@ -307,7 +310,7 @@ impl<'a> Emitter<'a> {
             children,
             position: _,
         }: &'a mdast::Strong,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         let old_style = mem::replace(&mut self.style.bold, true);
         for child in children {
             self.node(child)?;
@@ -323,7 +326,7 @@ impl<'a> Emitter<'a> {
             children,
             position: _,
         }: &'a mdast::Emphasis,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         let old_style = mem::replace(&mut self.style.italic, true);
         for child in children {
             self.node(child)?;
@@ -336,7 +339,7 @@ impl<'a> Emitter<'a> {
     fn inline_code(
         &mut self,
         mdast::InlineCode { value, position: _ }: &'a mdast::InlineCode,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         self.fmt_text(
             &value,
             self.style.bold,
@@ -354,7 +357,7 @@ impl<'a> Emitter<'a> {
             children,
             position: _,
         }: &'a mdast::Delete,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         let old_style = mem::replace(&mut self.style.strikeout, true);
         for child in children {
             self.node(child)?;
@@ -372,7 +375,7 @@ impl<'a> Emitter<'a> {
             url: _,
             title: _,
         }: &'a mdast::Link,
-    ) -> Result<(), ToMinimadError<'a>> {
+    ) -> Result<(), ToMinimadError> {
         let new_style = Style {
             bold: self.options.links_style.bold.unwrap_or(self.style.bold),
             italic: self.options.links_style.italic.unwrap_or(self.style.italic),
@@ -388,6 +391,94 @@ impl<'a> Emitter<'a> {
         }
         self.style = old_style;
         Ok(())
+    }
+
+    /// emit a `List` node
+    fn list(
+        &mut self,
+        mdast::List {
+            children,
+            position: _,
+            ordered,
+            start: _,
+            spread: _,
+        }: &'a mdast::List,
+    ) -> Result<(), ToMinimadError> {
+        if *ordered {
+            return Err(ToMinimadError::UnsupportedNumberedLists);
+        }
+        self.phrasing(CompositeStyle::Paragraph, true, |this| {
+            for item in children {
+                let item @ Node::ListItem(mdast::ListItem {
+                    children,
+                    position: _,
+                    spread: _,
+                    checked: _,
+                }) = item
+                else {
+                    return Err(ToMinimadError::unsupported_child_node(item));
+                };
+                // render the child as a text
+                let mut emitter = Emitter::new(this.options);
+                for child in children {
+                    emitter.node(child).while_emitting(item)?;
+                }
+                let mut item = emitter.finish();
+                // Transform the first line in a list item if is a paragraph,
+                // else leave a empty list item (minimad do not support item of different type)
+                if let Some(Line::Normal(Composite {
+                    style: style @ CompositeStyle::Paragraph,
+                    compounds: _,
+                })) = item.lines.first_mut()
+                {
+                    *style = CompositeStyle::ListItem(0)
+                } else {
+                    item.lines.insert(
+                        0,
+                        Line::Normal(Composite {
+                            style: CompositeStyle::ListItem(0),
+                            compounds: vec![],
+                        }),
+                    )
+                }
+                // For each child successive line, if its a list, indent it a bit more, else add some indentation as text
+                for line in item.lines.iter_mut().skip(1) {
+                    match line {
+                        Line::Normal(Composite { style, compounds }) => match style {
+                            CompositeStyle::ListItem(indent) => {
+                                *indent = indent
+                                    .checked_add(1)
+                                    .ok_or(ToMinimadError::ListTooMuchNested)?
+                            }
+
+                            CompositeStyle::Paragraph
+                            | CompositeStyle::Header(_)
+                            | CompositeStyle::Code
+                            | CompositeStyle::Quote => compounds.insert(
+                                0,
+                                Compound {
+                                    src: "  ",
+                                    bold: false,
+                                    italic: false,
+                                    code: false,
+                                    strikeout: false,
+                                },
+                            ),
+                        },
+                        Line::HorizontalRule => (),
+                        Line::TableRow(_) | Line::TableRule(_) => {
+                            unimplemented!("Tables are not implemented")
+                        }
+                        Line::CodeFence(_) => {
+                            unimplemented!("Code fences are still not implemented")
+                        }
+                    }
+                }
+                // Append all the lines from the item
+                this.lines.append(&mut item.lines)
+            }
+            Ok(())
+        })
     }
 }
 
