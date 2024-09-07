@@ -1,10 +1,9 @@
 #![doc = include_str!("../README.md")]
 
-use std::{cell, mem};
+use std::mem;
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use markdown::mdast::{Node, TableCell};
 use minimad::{Composite, CompositeStyle, Compound, Line, TableRow, TableRule, Text};
 
 #[derive(Clone, Debug, Display, Error)]
@@ -473,7 +472,7 @@ impl<'a> Emitter<'a> {
         }
         self.phrasing(CompositeStyle::Paragraph, true, |this| {
             for item in children {
-                let item @ Node::ListItem(mdast::ListItem {
+                let item @ mdast::Node::ListItem(mdast::ListItem {
                     children,
                     position: _,
                     spread: _,
