@@ -104,7 +104,7 @@ pub const fn md_parse_options() -> markdown::ParseOptions {
             mdx_expression_text: false,
             mdx_jsx_flow: false,
             mdx_jsx_text: false,
-            thematic_break: false,
+            thematic_break: true,
         },
         gfm_strikethrough_single_tilde: false,
         math_text_single_dollar: false,
@@ -263,6 +263,7 @@ impl<'a> Emitter<'a> {
             mdast::Node::Link(link) => self.link(link),
             mdast::Node::List(list) => self.list(list),
             mdast::Node::Table(table) => self.table(table),
+            mdast::Node::ThematicBreak(thematic_break) => self.thematic_break(thematic_break),
             // Nodes that are supported only as child of others
             node @ (mdast::Node::ListItem(_)
             | mdast::Node::TableCell(_)
@@ -580,6 +581,7 @@ impl<'a> Emitter<'a> {
         })
     }
 
+    /// Emit a `TableRow` node
     fn table_row(
         &mut self,
         mdast::TableRow {
@@ -622,6 +624,17 @@ impl<'a> Emitter<'a> {
         }));
 
         Ok(())
+    }
+
+    /// Emit a `ThematicBreak` node
+    fn thematic_break(
+        &mut self,
+        mdast::ThematicBreak { position: _ }: &'a mdast::ThematicBreak,
+    ) -> Result<(), ToMinimadError> {
+        self.phrasing(CompositeStyle::Paragraph, false, |this| {
+            this.lines.push(Line::HorizontalRule);
+            Ok(())
+        })
     }
 }
 
