@@ -603,7 +603,7 @@ impl<'a> Emitter<'a> {
             }
             let Text { mut lines } = emitter.finish();
             // fail if the cell has multiple lines
-            if dbg!(lines.len()) > 1 {
+            if lines.len() > 1 {
                 return Err(ToMinimadError::MultilineTableCell);
             }
             // return the single line
