@@ -60,6 +60,52 @@ pub fn to_minimad<'a>(ast: &'a mdast::Node) -> Result<minimad::Text<'a>, ToMinim
     Ok(emitter.finish())
 }
 
+/// Return the ParseOptions containing all the constructs supported by the conversion
+pub const fn md_parse_options() -> markdown::ParseOptions {
+    markdown::ParseOptions {
+        constructs: markdown::Constructs {
+            attention: true,
+            autolink: true,
+            block_quote: true,
+            character_escape: true,
+            character_reference: true,
+            code_indented: true,
+            code_fenced: true,
+            code_text: true,
+            definition: false,
+            frontmatter: false,
+            gfm_autolink_literal: true,
+            gfm_footnote_definition: false,
+            gfm_label_start_footnote: false,
+            gfm_strikethrough: true,
+            gfm_table: false,
+            gfm_task_list_item: false,
+            hard_break_escape: true,
+            hard_break_trailing: true,
+            heading_atx: true,
+            heading_setext: true,
+            html_flow: false,
+            html_text: false,
+            label_start_image: false,
+            label_start_link: true,
+            label_end: true,
+            list_item: true,
+            math_flow: false,
+            math_text: false,
+            mdx_esm: false,
+            mdx_expression_flow: false,
+            mdx_expression_text: false,
+            mdx_jsx_flow: false,
+            mdx_jsx_text: false,
+            thematic_break: false,
+        },
+        gfm_strikethrough_single_tilde: false,
+        math_text_single_dollar: false,
+        mdx_expression_parse: None,
+        mdx_esm_parse: None,
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 /// Options for the conversion
 pub struct Options {
