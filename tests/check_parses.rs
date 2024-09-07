@@ -1,6 +1,4 @@
-#![feature(error_reporter)]
-
-use std::error::Report;
+use std::error::Error;
 
 use mdast2minimad::{md_parse_options, to_minimad};
 
@@ -11,7 +9,17 @@ fn test_source(source: &'static str) {
         markdown::to_mdast(&source, &md_parse_options()).expect("Markdown has no syntax errors");
     // convertint it
     if let Err(error) = to_minimad(&ast) {
-        panic!("Cannot convert:\n{}", Report::new(error).pretty(true))
+        eprintln!("{error}");
+        if let Some(mut source) = error.source() {
+            eprintln!();
+            eprintln!("Cause:");
+            eprintln!("  - {source}");
+            while let Some(next_source) = source.source() {
+                source = next_source;
+                eprintln!("  - {source}");
+            }
+        }
+        panic!("Error during conversion");
     }
 }
 
