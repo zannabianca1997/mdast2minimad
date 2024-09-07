@@ -1,3 +1,7 @@
+#![feature(error_reporter)]
+
+use std::error::Report;
+
 use mdast2minimad::{md_parse_options, to_minimad};
 
 /// Main test implementation, called for every test source in `sources`
@@ -7,7 +11,7 @@ fn test_source(source: &'static str) {
         markdown::to_mdast(&source, &md_parse_options()).expect("Markdown has no syntax errors");
     // convertint it
     if let Err(error) = to_minimad(&ast) {
-        panic!("Cannot convert: {error}")
+        panic!("Cannot convert:\n{}", Report::new(error).pretty(true))
     }
 }
 
