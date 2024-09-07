@@ -1,11 +1,11 @@
 #![doc = include_str!("../README.md")]
 
-use std::mem;
+use std::{cell, mem};
 
 use derive_more::derive::{Debug, Display, Error};
 pub use markdown::mdast;
-use markdown::mdast::Node;
-use minimad::{Composite, CompositeStyle, Compound, Line};
+use markdown::mdast::{Node, TableCell};
+use minimad::{Composite, CompositeStyle, Compound, Line, TableRow, TableRule, Text};
 
 #[derive(Clone, Debug, Display, Error)]
 /// Error while converting the AST into a `minimad` text
@@ -23,6 +23,11 @@ pub enum ToMinimadError {
     UnsupportedNumberedLists,
     #[display("`minimad` supports nested list only up to 255 levels")]
     ListTooMuchNested,
+    #[display("`minimad` does not support multiline table cells")]
+    MultilineTableCell,
+    // This error should only appear on malformed ASTs
+    #[display("A table cell can contain only normal lines")]
+    InvalidLineTypeInTableCell,
 }
 impl ToMinimadError {
     fn unsupported_node(node: &mdast::Node) -> Self {
@@ -80,7 +85,7 @@ pub const fn md_parse_options() -> markdown::ParseOptions {
             gfm_footnote_definition: false,
             gfm_label_start_footnote: false,
             gfm_strikethrough: true,
-            gfm_table: false,
+            gfm_table: true,
             gfm_task_list_item: false,
             hard_break_escape: true,
             hard_break_trailing: true,
@@ -233,7 +238,12 @@ impl<'a> Emitter<'a> {
     }
 
     /// Complete the emission
-    fn finish(self) -> minimad::Text<'a> {
+    fn finish(mut self) -> minimad::Text<'a> {
+        // emit last text if a line is still open
+        if let Some(ContentModel::Phrasing { style, compounds }) = self.model {
+            self.lines
+                .push(Line::Normal(Composite { style, compounds }))
+        }
         minimad::Text { lines: self.lines }
     }
 
@@ -252,10 +262,11 @@ impl<'a> Emitter<'a> {
             mdast::Node::Delete(delete) => self.delete(delete),
             mdast::Node::Link(link) => self.link(link),
             mdast::Node::List(list) => self.list(list),
+            mdast::Node::Table(table) => self.table(table),
             // Nodes that are supported only as child of others
-            list_item @ mdast::Node::ListItem(_) => {
-                Err(ToMinimadError::unsupported_child_node(list_item))
-            }
+            node @ (mdast::Node::ListItem(_)
+            | mdast::Node::TableCell(_)
+            | mdast::Node::TableRow(_)) => Err(ToMinimadError::unsupported_child_node(node)),
             // Catch all for unsupported nodes
             other => Err(ToMinimadError::unsupported_node(other)),
         }
@@ -531,6 +542,86 @@ impl<'a> Emitter<'a> {
             }
             Ok(())
         })
+    }
+
+    /// emit a `Table` node
+    fn table(
+        &mut self,
+        mdast::Table {
+            children,
+            position: _,
+            align,
+        }: &'a mdast::Table,
+    ) -> Result<(), ToMinimadError> {
+        let mut rows = children.iter().map(|child| {
+            let mdast::Node::TableRow(child) = child else {
+                return Err(ToMinimadError::unsupported_child_node(child));
+            };
+            Ok(child)
+        });
+
+        self.phrasing(CompositeStyle::Paragraph, true, |this| {
+            this.table_row(rows.next().unwrap()?)?;
+            this.lines.push(Line::TableRule(TableRule {
+                cells: align
+                    .iter()
+                    .map(|align| match align {
+                        mdast::AlignKind::Left => minimad::Alignment::Left,
+                        mdast::AlignKind::Right => minimad::Alignment::Right,
+                        mdast::AlignKind::Center => minimad::Alignment::Center,
+                        mdast::AlignKind::None => minimad::Alignment::Unspecified,
+                    })
+                    .collect(),
+            }));
+            for row in rows {
+                this.table_row(row?)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn table_row(
+        &mut self,
+        mdast::TableRow {
+            children,
+            position: _,
+        }: &'a mdast::TableRow,
+    ) -> Result<(), ToMinimadError> {
+        let cells = children.iter().map(|child| {
+            let mdast::Node::TableCell(mdast::TableCell {
+                children,
+                position: _,
+            }) = child
+            else {
+                return Err(ToMinimadError::unsupported_child_node(child));
+            };
+            // render the cell as text
+            let mut emitter = Emitter::new(self.options);
+            for child in children {
+                emitter.node(child).while_emitting(child)?;
+            }
+            let Text { mut lines } = emitter.finish();
+            // fail if the cell has multiple lines
+            if dbg!(lines.len()) > 1 {
+                return Err(ToMinimadError::MultilineTableCell);
+            }
+            // return the single line
+            let line = match lines.pop() {
+                Some(Line::Normal(composite)) => composite,
+                Some(_) => return Err(ToMinimadError::InvalidLineTypeInTableCell),
+                None => Composite {
+                    style: CompositeStyle::Paragraph,
+                    compounds: vec![],
+                },
+            };
+            Ok(line)
+        });
+
+        self.lines.push(Line::TableRow(TableRow {
+            cells: cells.collect::<Result<_, _>>()?,
+        }));
+
+        Ok(())
     }
 }
 

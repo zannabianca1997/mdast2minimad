@@ -4,7 +4,6 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use markdown::ParseOptions;
 
 #[derive(Debug, Parser)]
 #[command(version = "0.1.0", name = "display")]
@@ -18,9 +17,6 @@ struct Cli {
     /// Print the generated ASTs
     #[clap(long = "ast", short = 'a')]
     print_ast: bool,
-    /// Use github flavoured markdown (for strikethrough)
-    #[clap(long, short)]
-    gfm: bool,
 }
 
 fn main() -> Result<()> {
@@ -28,7 +24,6 @@ fn main() -> Result<()> {
         markdown,
         minimad,
         print_ast,
-        gfm,
     } = Cli::parse();
 
     // read the sources
@@ -39,15 +34,8 @@ fn main() -> Result<()> {
         minimad::parse_text(&src, minimad::Options::default())
     } else {
         // Parse with `markdown`
-        let ast = markdown::to_mdast(
-            &src,
-            &if gfm {
-                ParseOptions::gfm()
-            } else {
-                ParseOptions::default()
-            },
-        )
-        .expect("Markdown has no syntax errors");
+        let ast = markdown::to_mdast(&src, &mdast2minimad::md_parse_options())
+            .expect("Markdown has no syntax errors");
         // Leak it: the ast must live until the print, and then the program will end.
         // There is no merit in keeping track of the AST lifetime
         let ast = &*Box::leak(Box::new(ast));
