@@ -760,7 +760,7 @@ impl<'a> Emitter<'a> {
 fn type_of(node: &mdast::Node) -> &'static str {
     match node {
         mdast::Node::Root(_) => "Root",
-        mdast::Node::BlockQuote(_) => "BlockQuote",
+        mdast::Node::Blockquote(_) => "Blockquote",
         mdast::Node::FootnoteDefinition(_) => "FootnoteDefinition",
         mdast::Node::MdxJsxFlowElement(_) => "MdxJsxFlowElement",
         mdast::Node::List(_) => "List",
