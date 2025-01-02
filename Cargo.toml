@@ -14,11 +14,11 @@ derive_more = { version = "1.0.0", features = [
 ] }
 
 [dev-dependencies]
-anyhow = "1.0.86"
-clap = { version = "4.5.16", features = ["derive"] }
-termimad = "0.30.0"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+termimad = "0.30"
 
 [build-dependencies]
-proc-macro2 = "1.0.86"
-quote = "1.0.37"
-slugify = "0.1.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+slugify = "0.1"

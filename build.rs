@@ -11,7 +11,7 @@ use slugify::slugify;
 const TEST_SOURCES_DIR: &str = "tests/sources";
 
 fn main() {
-    // scan the test sources to add them to the tests
+    // Scan the test sources to add them to the tests
     add_test_sources()
 }
 
