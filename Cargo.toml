@@ -1,7 +1,14 @@
 [package]
 name = "mdast2minimad"
+description = "A crate for converting markdown AST to minimad texts"
+readme = "README.md"
+repository = "https://github.com/zannabianca1997/mdast2minimad"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+categories = ["text-processing"]
+keywords = ["termimad", "markdown", "conversion", "mdast", "minimad"]
+
 
 [dependencies]
 minimad = "0.13.1"
